@@ -98,33 +98,40 @@ def main():
         if not face_found:
             cv2.putText(display_frame, "FACE NOT FOUND", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         else:
+            # (x, y, w, h) = bbox
+            # cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            scale = 1  # Updated to 1 since we no longer resize in detector
+
             (x, y, w, h) = bbox
-            cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            
+            x *= scale
+            y *= scale
+            w *= scale
+            h *= scale
             try:
                 # Calculate features
-                if not is_fallback:
-                    ear = get_both_eyes_ear(landmarks)
-                    mar = calculate_mar(landmarks)
+                # if not is_fallback:
+                ear = get_both_eyes_ear(landmarks)
+                mar = calculate_mar(landmarks)
                 
                 dest_ratio = detect_distraction(landmarks)
                 nose_y = get_nose_y(landmarks)
                 
                 # Calculate horizontal nose shift ratio for distraction
-                nose_x = landmarks[30][0]
+                nose_x = landmarks[30][0]*scale
                 box_center_x = x + w / 2.0
                 nose_shift_ratio = abs(nose_x - box_center_x) / float(w)
                 
-                # Draw landmarks
-                if not is_fallback:
-                    for (lx, ly) in landmarks:
-                        cv2.circle(display_frame, (lx, ly), 1, (255, 255, 255), -1)
+                # Draw landmarks always if we have them
+                for (lx, ly) in landmarks:
+                    lx = int(lx * scale)
+                    ly = int(ly * scale)
+                    cv2.circle(display_frame, (lx, ly), 1, (255, 255, 255), -1)
             except Exception as e:
                 # Handle feature fallback automatically by passing None
                 pass
 
         # State and Temporal Logic Processing
-        triggers, risk_score = state_mgr.update_state(ear, mar, dest_ratio, nose_y, nose_shift_ratio, is_glare)
+        triggers, risk_score, is_confirmed = state_mgr.update_state(ear, mar, dest_ratio, nose_y, nose_shift_ratio, is_glare)
 
         # UI & HUD rendering - Cleaned hierarchy to avoid overlap
         cv2.putText(display_frame, f"Risk Score: {state_mgr.total_risk_score:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
@@ -134,9 +141,12 @@ def main():
             cv2.putText(display_frame, f"TRG: {trigger}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
             y_offset += 25
             
-        if risk_score >= state_mgr.alert_threshold:
+        # ✅ NEW: Use is_confirmed for 5-second delay
+        if is_confirmed:
             alert_sys.draw_alert(display_frame, "HIGH RISK")
-            alert_sys.play_sound()
+            alert_sys.play_sound() # Now repeats automatically
+        else:
+            alert_sys.reset_alert()
 
         cv2.imshow("SafeDriveAI", display_frame)
 
